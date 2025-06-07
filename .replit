@@ -4,7 +4,7 @@ channel = "stable-24_05"
 packages = ["glibcLocales", "libxcrypt"]
 
 [workflows]
-runButton = "Run Schedule Optimizer"
+runButton = "Run FastAPI Server"
 
 [[workflows.workflow]]
 name = "Run Schedule Optimizer"

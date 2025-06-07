@@ -19,7 +19,7 @@ def test_api():
     
     # Get sample request
     try:
-        response = requests.get(f"{base_url}/sample-request")
+        response = requests.get(f"{base_url}/planmydaynurse/sample-request")
         sample_data = response.json()
         print("\nSample request retrieved successfully")
     except Exception as e:
@@ -29,7 +29,7 @@ def test_api():
     # Test optimization endpoint
     try:
         response = requests.post(
-            f"{base_url}/optimize-schedule",
+            f"{base_url}/planmydaynurse/optimize",
             json=sample_data,
             headers={"Content-Type": "application/json"}
         )

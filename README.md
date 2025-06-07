@@ -27,6 +27,123 @@ The IDSOA takes a nurse's daily work items (appointments, tasks, alerts, follow-
    python -c "from ortools.sat.python import cp_model; print('OR-Tools installed successfully')"
    ```
 
+## API Endpoints
+
+### FastAPI Server
+
+Start the API server:
+```bash
+python api.py
+```
+
+The API will be available at:
+- **Main endpoint**: `POST /planmydaynurse/optimize`
+- **Sample data**: `GET /planmydaynurse/sample-request`
+- **Health check**: `GET /health`
+
+### Sample JSON Request
+
+Here's a complete sample request that you can use to test the API:
+
+```json
+{
+  "nurseId": "NBetty01",
+  "scheduleDate": "2023-10-01",
+  "workItems": {
+    "appointments": [
+      {
+        "itemId": "V701",
+        "itemType": "Appointment",
+        "patientId": "102",
+        "title": "Jane Smith - Diabetes FU",
+        "startTime": "09:00:00",
+        "estimatedDuration": 45,
+        "location": "Clinic A",
+        "isFixedTime": true,
+        "initialPriorityScore": 7
+      },
+      {
+        "itemId": "V702",
+        "itemType": "Appointment",
+        "patientId": "P002",
+        "title": "Robert Blue - Checkup",
+        "startTime": "14:00:00",
+        "estimatedDuration": 30,
+        "location": "Clinic B",
+        "isFixedTime": true,
+        "initialPriorityScore": 5
+      }
+    ],
+    "calendar_events": [
+      {
+        "itemId": "EVT001",
+        "itemType": "Meeting",
+        "title": "Team Huddle",
+        "startTime": "10:00:00",
+        "estimatedDuration": 60,
+        "location": "Conf Room B",
+        "isFixedTime": true,
+        "initialPriorityScore": 4
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T501",
+        "patientId": "102",
+        "description": "Call Jane Smith re: BG monitoring",
+        "estimatedDuration": 25,
+        "initialPriorityScore": 9,
+        "dueDate": "2023-10-01",
+        "deadline": "17:00:00",
+        "locationDependency": "Desk"
+      },
+      {
+        "taskId": "T502",
+        "patientId": "P003",
+        "description": "Prep P003 chart for tomorrow",
+        "estimatedDuration": 15,
+        "initialPriorityScore": 6,
+        "dueDate": "2023-10-01",
+        "deadline": "16:00:00",
+        "locationDependency": "Desk"
+      }
+    ],
+    "critical_alerts_to_address": [
+      {
+        "alertId": "ALERT790",
+        "patientId": "102",
+        "alertType": "Critical Lab",
+        "summary": "K+ 2.8 (Low Potassium)",
+        "estimatedTimeToAddress": 20,
+        "urgencyScore": 10
+      }
+    ],
+    "follow_ups": [
+      {
+        "followUpId": "FU001",
+        "patientId": "205",
+        "reason": "Post-Discharge Call",
+        "estimatedDurationForFollowUpAction": 15,
+        "initialPriorityScore": 7
+      }
+    ]
+  },
+  "nurseConstraints": {
+    "shiftStartTime": "08:00:00",
+    "shiftEndTime": "17:00:00",
+    "lunchBreakPreferredStartTime": "12:30:00",
+    "lunchBreakDuration": 30,
+    "blockedOutTimes": [
+      {
+        "start": "13:00:00",
+        "end": "13:30:00",
+        "reason": "Mandatory Training"
+      }
+    ]
+  }
+}
+```
+
 ## Usage
 
 ### Basic Usage

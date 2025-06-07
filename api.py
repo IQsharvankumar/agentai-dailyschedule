@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from schedule_optimizer import IntelligentDailyScheduleOptimizer, MockKBS
 import uvicorn
 
-app = FastAPI(title="Intelligent Daily Schedule Optimization API", version="1.0.0")
+app = FastAPI(title="PlanMyDayNurse - Intelligent Schedule Optimization API", version="1.0.0")
 
 # Pydantic models for request/response validation
 class Appointment(BaseModel):
@@ -102,13 +102,13 @@ class ScheduleOptimizationResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Intelligent Daily Schedule Optimization API", "status": "running"}
+    return {"message": "PlanMyDayNurse - Intelligent Schedule Optimization API", "status": "running"}
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "schedule-optimizer"}
 
-@app.post("/optimize-schedule", response_model=ScheduleOptimizationResponse)
+@app.post("/planmydaynurse/optimize", response_model=ScheduleOptimizationResponse)
 async def optimize_schedule(request: ScheduleOptimizationRequest):
     """
     Optimize a nurse's daily schedule based on work items and constraints.
@@ -134,7 +134,7 @@ async def optimize_schedule(request: ScheduleOptimizationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
 
-@app.get("/sample-request")
+@app.get("/planmydaynurse/sample-request")
 async def get_sample_request():
     """
     Returns a sample request format for testing the optimization endpoint.
