@@ -268,7 +268,10 @@ class IntelligentDailyScheduleOptimizer:
             
             if high_priority_terms:
                 model.Add(high_priority_start_sum == sum(high_priority_terms))
-                model.Minimize(lunch_deviation + high_priority_start_sum // 10)
+                # Create a variable for the division result
+                high_priority_penalty = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min // 10, 'high_priority_penalty')
+                model.AddDivisionEquality(high_priority_penalty, high_priority_start_sum, 10)
+                model.Minimize(lunch_deviation + high_priority_penalty)
             else:
                 model.Minimize(lunch_deviation)
             
