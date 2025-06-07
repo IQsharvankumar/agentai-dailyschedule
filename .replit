@@ -14,3 +14,12 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python schedule_optimizer.py"
+
+[[workflows.workflow]]
+name = "Run FastAPI Server"
+author = 41300902
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python api.py"
