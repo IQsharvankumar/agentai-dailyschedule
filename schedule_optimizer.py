@@ -267,7 +267,7 @@ class IntelligentDailyScheduleOptimizer:
                     high_priority_terms.append(vars_data["start"])
             
             if high_priority_terms:
-                model.AddSumEquality(high_priority_start_sum, high_priority_terms)
+                model.Add(high_priority_start_sum == sum(high_priority_terms))
                 model.Minimize(lunch_deviation + high_priority_start_sum // 10)
             else:
                 model.Minimize(lunch_deviation)
