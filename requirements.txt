@@ -1,2 +1,27 @@
+# requirements.txt
 
+# For the core optimization engine
 ortools>=9.7.2996
+
+# For creating the API endpoint (if you choose FastAPI)
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+
+# For data validation and structuring (highly recommended)
+pydantic>=2.0.0
+
+# For data manipulation, especially if reading/processing CSVs or tabular data initially
+pandas>=1.5.0
+
+# If you were to implement more advanced NLP for summarization (optional, not in current stubs)
+# spacy>=3.0.0
+# transformers>=4.0.0
+# sentencepiece # often needed by transformers
+
+# If connecting to specific databases (examples, uncomment and use as needed)
+# psycopg2-binary # For PostgreSQL
+# mysql-connector-python # For MySQL
+# pyodbc # For SQL Server (often needs system-level ODBC drivers)
+
+# For handling dates and times more robustly (though standard library is often sufficient)
+# python-dateutil>=2.8.0

@@ -1,8 +1,9 @@
+modules = ["python-3.11"]
 [nix]
 channel = "stable-24_05"
+packages = ["glibcLocales", "libxcrypt"]
 
 [workflows]
-runButton = "Run Schedule Optimizer"
 
 [[workflows.workflow]]
 name = "Run Schedule Optimizer"
