@@ -1,0 +1,414 @@
+You are an expert Python developer tasked with creating an "Intelligent Daily Schedule Optimization Agent" (IDSOA). This agent will take a list of a nurse's daily work items and constraints, and then generate an optimized, time-blocked schedule.
+
+**Objective:**
+Generate Python code for a class `IntelligentDailyScheduleOptimizer` and its supporting classes/functions. The main method of this class, `optimize_schedule`, will take structured input representing a nurse's daily workload and constraints, and return a structured, optimized schedule in JSON-like dictionary format. Prioritize using Google OR-Tools (specifically the CP-SAT solver) for the core scheduling optimization.
+
+**I. Core Class: `IntelligentDailyScheduleOptimizer`**
+
+   **A. `__init__(self, nurse_id: str, schedule_date: str, knowledge_base_accessor)`:**
+      *   `nurse_id`: Identifier for the nurse.
+      *   `schedule_date`: The date for which the schedule is being optimized (e.g., "YYYY-MM-DD").
+      *   `knowledge_base_accessor`: An object or function that allows fetching rules and parameters (e.g., `kbs.get_rule('task_durations')`, `kbs.get_constraint('max_work_time')`). For now, you can mock this or assume it returns predefined dictionaries.
+
+   **B. `optimize_schedule(self, work_items: Dict, nurse_constraints: Dict) -> Dict`:**
+      *   `work_items`: A dictionary containing lists of different types of work items. Structure:
+         ```python
+         {
+             "appointments": [ # List of appointment dicts
+                 {"itemId": "V701", "itemType": "Appointment", "patientId": "102", "title": "Jane Smith - Diabetes FU", "startTime": "09:00:00", "estimatedDuration": 45, "location": "Clinic A", "isFixedTime": True, "initialPriorityScore": 7, "pgiContext": [...]},
+                 # ... more appointments
+             ],
+             "calendar_events": [ # List of non-patient meeting/admin dicts
+                 {"itemId": "EVT001", "itemType": "Meeting", "title": "Team Huddle", "startTime": "10:00:00", "estimatedDuration": 60, "location": "Conf Room B", "isFixedTime": True, "initialPriorityScore": 4},
+                 # ... more events
+             ],
+             "tasks": [ # List of task dicts
+                 {"taskId": "T501", "patientId": "102", "description": "Call Jane Smith re: BG", "estimatedDuration": 25, "initialPriorityScore": 9, "dueDate": "2023-10-01", "deadline": "2023-10-01T17:00:00", "locationDependency": "Desk", "pgiLinkContext": {...}},
+                 # ... more tasks
+             ],
+             "critical_alerts_to_address": [ # Alerts that need time allocated
+                 {"alertId": "ALERT790", "patientId": "102", "alertType": "Critical Lab", "summary": "K+ 2.8", "estimatedTimeToAddress": 20, "urgencyScore": 10, "pgiContext": [...]},
+                 # ... more alerts
+             ],
+             "follow_ups": [ # Follow-ups needing time allocation
+                {"followUpId": "FU001", "patientId": "205", "reason": "Post-Discharge Call", "estimatedDurationForFollowUpAction": 15, "initialPriorityScore": 7, "triggerEventDate": "2023-09-25", "pgiContext": [...] }
+             ]
+         }
+         ```
+      *   `nurse_constraints`: A dictionary of constraints for the nurse. Structure:
+         ```python
+         {
+             "shiftStartTime": "08:00:00",
+             "shiftEndTime": "17:00:00",
+             "lunchBreakPreferredStartTime": "12:00:00",
+             "lunchBreakDuration": 30, // minutes
+             "blockedOutTimes": [ // List of {start: "HH:MM:SS", end: "HH:MM:SS"}
+                 {"start": "13:00:00", "end": "13:30:00", "reason": "Mandatory Training"}
+             ],
+             "travelMatrix": Optional[Dict], // e.g., {("Clinic A", "Clinic B"): 15 (minutes)} - if travel is considered
+             "currentLocation": Optional[str] // Nurse's starting location if travel is considered
+         }
+         ```
+      *   **Returns:** A dictionary matching the "Optimized Daily Schedule JSON Output" previously defined (with `optimizedSchedule` list, `unachievableItems`, `optimizationScore`, `warnings`).
+
+**II. Core Optimization Logic within `optimize_schedule` (using Google OR-Tools CP-SAT Solver):**
+
+   1.  **Data Preparation & Preprocessing:**
+      *   Convert all times to a consistent numerical representation (e.g., minutes from midnight).
+      *   Combine all work items (appointments, tasks, alerts, follow-ups) into a single list of "schedulable activities," each with attributes like: `id`, `type`, `duration`, `priority`, `is_fixed_start_time`, `fixed_start_time_val` (if applicable), `deadline_val`, `location`, `patientId`.
+      *   Incorporate PGI context to refine `duration` and `priority` for PGI-related tasks/activities.
+      *   Determine precedence constraints if any (e.g., task B must follow task A). (For MVP, simple sequencing might be enough, but design for this).
+
+   2.  **Model Creation (CP-SAT):**
+      *   Create `model = cp_model.CpModel()`.
+      *   **Variables:**
+         *   For each flexible activity `i`:
+            *   `start_var_i = model.NewIntVar(domain_start, domain_end, f'start_{i}')` (start time)
+            *   `end_var_i = model.NewIntVar(domain_start, domain_end, f'end_{i}')` (end time)
+            *   `duration_var_i = model.NewIntVar(duration_i, duration_i, f'duration_{i}')` (fixed duration)
+            *   `presence_var_i = model.NewBoolVar(f'presence_{i}')` (if the task can be optionally skipped/unscheduled) - initially, assume all tasks must be present if possible.
+         *   Interval Variables: `interval_var_i = model.NewIntervalVar(start_var_i, duration_var_i, end_var_i, f'interval_{i}')`
+      *   **Domains:** Calculate `domain_start` and `domain_end` based on shift times and activity deadlines.
+
+   3.  **Constraints:**
+      *   **Activity Duration:** `end_var_i == start_var_i + duration_var_i`. (Handled by `NewIntervalVar`).
+      *   **Shift Boundaries:** `start_var_i >= shift_start_val`, `end_var_i <= shift_end_val`.
+      *   **Fixed Time Activities:** For `isFixedTime == True`, `start_var_i == fixed_start_time_val`.
+      *   **Deadlines:** For tasks with deadlines, `end_var_i <= deadline_val`.
+      *   **No Overlap (Core Constraint):**
+         *   `model.AddNoOverlap([interval_var_i for all present activities])`
+         *   This includes appointments, tasks, alerts being addressed, follow-ups, *and generated lunch/blocked times*.
+      *   **Blocked Out Times & Lunch Break:**
+         *   Treat these as fixed, non-schedulable intervals. OR-Tools `AddNoOverlap` will schedule around them.
+         *   For lunch, try to schedule it around `lunchBreakPreferredStartTime`. This can be a soft constraint or part of the objective.
+      *   **Travel Time (If applicable and `travelMatrix` provided):**
+         *   This is more complex. If activity `i` at `loc_A` is followed by activity `j` at `loc_B`:
+            `start_var_j >= end_var_i + travel_time(loc_A, loc_B)`.
+            This often requires using boolean variables to indicate sequencing and `OnlyEnforceIf` conditions.
+            *Alternatively, for MVP, group tasks by location if travel is a major factor, and schedule location blocks.*
+      *   **Precedence Constraints (If defined):** `end_var_A <= start_var_B`.
+
+   4.  **Objective Function (Crucial for "Optimization"):**
+      *   The goal is to maximize a score or minimize a penalty.
+      *   **Primary Objective:** Maximize the sum of `priority_score_i * presence_var_i` for all activities. (Ensures high-priority items are scheduled).
+      *   **Secondary Objectives (can be weighted):**
+         *   Minimize total makespan (completion time of the last task, though less relevant if shift end is fixed).
+         *   Minimize lateness/tardiness for tasks with due dates (`max(0, end_var_i - due_date_val_i)`).
+         *   Minimize deviation of lunch break from preferred time.
+         *   Minimize total travel time (if applicable).
+      *   `model.Maximize(objective_expression)` or `model.Minimize(objective_expression)`.
+
+   5.  **Solver Invocation:**
+      *   `solver = cp_model.CpSolver()`
+      *   Set time limits: `solver.parameters.max_time_in_seconds = 30.0` (adjust as needed).
+      *   `status = solver.Solve(model)`
+
+   6.  **Solution Processing & Output Generation:**
+      *   Check `status` (`cp_model.OPTIMAL`, `cp_model.FEASIBLE`).
+      *   If a solution is found:
+         *   Iterate through activities. If `solver.Value(presence_var_i)` is true:
+            *   Get `solver.Value(start_var_i)` and `solver.Value(end_var_i)`.
+            *   Convert these numerical times back to "HH:MM:SS".
+            *   Construct the `optimizedSchedule` list items.
+         *   Identify `unachievableItems` (where `solver.Value(presence_var_i)` is false).
+         *   Calculate an `optimizationScore` (e.g., sum of priorities of scheduled items).
+         *   Generate `warnings` (e.g., if lunch break was shifted significantly).
+      *   If no feasible solution, populate `unachievableItems` and indicate failure.
+
+**III. Supporting Functions/Logic:**
+
+   *   **Time Conversion Utilities:** Functions to convert "HH:MM:SS" to minutes from midnight and vice-versa.
+   *   **Knowledge Base Accessor (Mock/Simple):**
+      ```python
+      class MockKBS:
+          def get_rule(self, rule_name):
+              rules = {
+                  "task_default_duration": 30, # minutes
+                  "alert_default_address_time": 15,
+                  "travel_speed_mph": 20, # for simple distance/time calc
+                  "priority_weights": {"High": 10, "Medium": 5, "Low": 1},
+                  "objective_weights": {"priority_sum": 100, "lateness_penalty": -10}
+              }
+              return rules.get(rule_name)
+          # ... more methods to get specific thresholds, etc.
+      ```
+   *   **Travel Time Calculation (If needed):**
+      *   Function `calculate_travel_time(loc_A, loc_B, travel_matrix)` that returns travel time in minutes.
+
+**IV. Error Handling & Edge Cases:**
+
+   *   What if no feasible schedule can be found? (Return an empty schedule with all items in `unachievableItems`).
+   *   What if input durations are invalid?
+   *   Handle missing optional input fields gracefully.
+
+**V. Structure for the Code:**
+
+```python
+from ortools.sat.python import cp_model
+from datetime import datetime, timedelta, time # and other necessary imports
+
+class IntelligentDailyScheduleOptimizer:
+    def __init__(self, nurse_id: str, schedule_date: str, knowledge_base_accessor):
+        self.nurse_id = nurse_id
+        self.schedule_date_obj = datetime.strptime(schedule_date, "%Y-%m-%d").date()
+        self.kbs = knowledge_base_accessor
+        # Convert shift times to minutes from midnight for easier calculations
+        # ...
+
+    def _prepare_activities(self, work_items: Dict, nurse_constraints: Dict) -> List[Dict]:
+        # ... combine all items into a unified list with consistent attributes for the solver ...
+        # ... apply PGI context to refine durations/priorities ...
+        prepared_activities = []
+        # Example for a task:
+        # prepared_activities.append({
+        #     "id": task["taskId"], "type": "task", "duration": task["estimatedDuration"],
+        //     "priority": self.kbs.get_rule("priority_weights").get(task["initialPriorityScore_text"], 1) # Example
+        #     "is_fixed": False, "fixed_start": None, "deadline": ..., "location": ...
+        # })
+        return prepared_activities
+
+    def _time_to_minutes(self, time_str: str) -> int:
+        # Helper to convert "HH:MM:SS" to minutes from midnight
+        h, m, s = map(int, time_str.split(':'))
+        return h * 60 + m
+
+    def _minutes_to_time_str(self, minutes: int) -> str:
+        # Helper to convert minutes from midnight to "HH:MM:SS"
+        return f"{minutes // 60:02d}:{(minutes % 60):02d}:00"
+
+
+    def optimize_schedule(self, work_items: Dict, nurse_constraints: Dict) -> Dict:
+        model = cp_model.CpModel()
+        
+        all_activities_prepared = self._prepare_activities(work_items, nurse_constraints)
+        
+        # Convert shift times and blocked times from nurse_constraints to minutes
+        shift_start_min = self._time_to_minutes(nurse_constraints["shiftStartTime"])
+        shift_end_min = self._time_to_minutes(nurse_constraints["shiftEndTime"])
+        lunch_duration_min = nurse_constraints["lunchBreakDuration"]
+        # ... and so on
+
+        # --- Create Variables ---
+        activity_vars = {} # To store start, end, interval, presence vars for each activity
+
+        for i, activity in enumerate(all_activities_prepared):
+            activity_id = activity["id"]
+            duration = activity["duration"] # in minutes
+            
+            # Define domain for start time based on shift and any fixed times/deadlines
+            domain_min_start = shift_start_min
+            domain_max_start = shift_end_min - duration
+
+            if activity.get("is_fixed"):
+                fixed_start_minutes = self._time_to_minutes(activity["fixed_start_time_str"])
+                domain_min_start = fixed_start_minutes
+                domain_max_start = fixed_start_minutes
+            
+            start_var = model.NewIntVar(domain_min_start, domain_max_start, f'start_{activity_id}')
+            # Duration is fixed for this example
+            # end_var = model.NewIntVar(domain_min_start + duration, shift_end_min, f'end_{activity_id}')
+            # For fixed duration, end_var is simply start_var + duration. IntervalVar handles this.
+            interval_var = model.NewIntervalVar(start_var, duration, start_var + duration, f'interval_{activity_id}')
+            presence_var = model.NewBoolVar(f'presence_{activity_id}') # Assume all must be present for now (presence_var = 1)
+            model.Add(presence_var == 1) # Force presence for MVP
+
+            activity_vars[activity_id] = {
+                "start": start_var,
+                "interval": interval_var,
+                "presence": presence_var,
+                "data": activity # Store original activity data
+            }
+
+        # --- Add Lunch Break ---
+        # Treat lunch as another activity with flexible start but fixed duration
+        lunch_pref_start_min = self._time_to_minutes(nurse_constraints["lunchBreakPreferredStartTime"])
+        lunch_start_var = model.NewIntVar(shift_start_min, shift_end_min - lunch_duration_min, 'lunch_start')
+        lunch_interval_var = model.NewIntervalVar(lunch_start_var, lunch_duration_min, lunch_start_var + lunch_duration_min, 'lunch_interval')
+        # This simple model doesn't penalize deviation from preferred lunch start, add to objective if needed
+
+        # --- Add Blocked Out Times ---
+        blocked_intervals = []
+        for bo_time in nurse_constraints.get("blockedOutTimes", []):
+            bo_start_min = self._time_to_minutes(bo_time["start"])
+            bo_end_min = self._time_to_minutes(bo_time["end"])
+            bo_duration = bo_end_min - bo_start_min
+            if bo_duration > 0 :
+                 blocked_intervals.append(model.NewFixedSizeIntervalVar(bo_start_min, bo_duration, f'blocked_{bo_start_min}'))
+
+
+        # --- Constraints ---
+        all_intervals_to_schedule = [v["interval"] for v in activity_vars.values()] + [lunch_interval_var] + blocked_intervals
+        model.AddNoOverlap(all_intervals_to_schedule)
+
+        # Add deadline constraints for tasks
+        for activity_id, vars_dict in activity_vars.items():
+            activity_data = vars_dict["data"]
+            if activity_data["type"] == "task" and activity_data.get("deadline"):
+                deadline_min = self._time_to_minutes(activity_data["deadline"].split('T')[1] if 'T' in activity_data["deadline"] else activity_data["deadline"]) # Assuming deadline format "YYYY-MM-DDTHH:MM:SS" or just "HH:MM:SS"
+                # End of activity must be <= deadline
+                model.Add(vars_dict["start"] + activity_data["duration"] <= deadline_min).OnlyEnforceIf(vars_dict["presence"])
+
+
+        # --- Objective Function ---
+        # Maximize sum of priorities of scheduled tasks (if presence_var is used to make tasks optional)
+        # For MVP, since all are present, we might not need a complex objective if just seeking feasibility.
+        # To make it more "optimized", we could try to minimize lateness or maximize preferences.
+        # Example: Minimize the start time of the lunch break (to have it as early as possible within constraints)
+        # model.Minimize(lunch_start_var) 
+        # Or, more realistically, minimize deviation from preferred lunch start:
+        lunch_deviation = model.NewIntVar(0, shift_end_min, 'lunch_deviation')
+        model.AddAbsEquality(lunch_deviation, lunch_start_var - lunch_pref_start_min) # lunch_deviation = abs(lunch_start - lunch_pref_start)
+        
+        # Simple objective: complete high priority tasks. If tasks can be skipped (presence_var < 1), this is important.
+        # For now, let's add the lunch deviation to an objective.
+        # If all tasks are mandatory (presence_var == 1), the objective can be simpler or focus on soft constraints.
+        
+        # Let's create a placeholder objective, e.g., minimizing sum of start times of high priority tasks
+        # to get them done earlier.
+        high_priority_task_starts_sum = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min, 'high_priority_task_starts_sum')
+        terms = []
+        for act_id, vars_data in activity_vars.items():
+            if vars_data["data"]["priority"] >= 8: # Assuming priority is numerical now in prepared data
+                terms.append(vars_data["start"])
+        model.AddSumEquality(high_priority_task_starts_sum, terms)
+        
+        # Combine objectives: minimize lunch deviation and sum of high-priority task starts
+        # Need to weigh them or handle multi-objective optimization.
+        # For simplicity, let's just use lunch deviation for now if all tasks are mandatory.
+        model.Minimize(lunch_deviation + high_priority_task_starts_sum // 10) # Weighted sum example
+
+
+        # --- Solve ---
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 15.0 # Adjust
+        status = solver.Solve(model)
+
+        # --- Process Solution ---
+        optimized_schedule_items = []
+        unachievable_items_list = [] # If presence_vars were used to allow skipping
+
+        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+            print("Solution Found!")
+            # Add scheduled activities
+            for activity_id, vars_dict in activity_vars.items():
+                if solver.BooleanValue(vars_dict["presence"]): # Check if scheduled
+                    start_val = solver.Value(vars_dict["start"])
+                    activity_data = vars_dict["data"]
+                    end_val = start_val + activity_data["duration"]
+                    optimized_schedule_items.append({
+                        "slotStartTime": self._minutes_to_time_str(start_val),
+                        "slotEndTime": self._minutes_to_time_str(end_val),
+                        "activityType": activity_data["type"],
+                        "title": activity_data["title"] if "title" in activity_data else activity_data["description"],
+                        "details": activity_data.get("details", ""),
+                        "relatedItemId": activity_id
+                    })
+                else:
+                    unachievable_items_list.append({"itemId": activity_id, "itemType": vars_dict["data"]["type"], "reason": "Could not be scheduled due to constraints/time."})
+            
+            # Add lunch break to schedule
+            lunch_start_val = solver.Value(lunch_start_var)
+            optimized_schedule_items.append({
+                "slotStartTime": self._minutes_to_time_str(lunch_start_val),
+                "slotEndTime": self._minutes_to_time_str(lunch_start_val + lunch_duration_min),
+                "activityType": "Break",
+                "title": "Lunch Break",
+                "details": "",
+                "relatedItemId": "LUNCH"
+            })
+
+            # Add blocked out times (already fixed, but good to include for completeness if UI needs it)
+            for i, bo_time in enumerate(nurse_constraints.get("blockedOutTimes", [])):
+                 bo_start_min = self._time_to_minutes(bo_time["start"])
+                 bo_end_min = self._time_to_minutes(bo_time["end"])
+                 optimized_schedule_items.append({
+                    "slotStartTime": self._minutes_to_time_str(bo_start_min),
+                    "slotEndTime": self._minutes_to_time_str(bo_end_min),
+                    "activityType": "Blocked",
+                    "title": bo_time.get("reason", "Blocked Time"),
+                    "details": "",
+                    "relatedItemId": f"BLOCK_{i}"
+                 })
+
+
+            # Sort the final schedule by start time
+            optimized_schedule_items.sort(key=lambda x: self._time_to_minutes(x["slotStartTime"]))
+
+        else:
+            print("No solution found or solver timed out.")
+            # Populate unachievable_items_list with all input items if no solution
+            for activity in all_activities_prepared:
+                 unachievable_items_list.append({"itemId": activity["id"], "itemType": activity["type"], "reason": "No feasible schedule found."})
+
+
+        return {
+            "nurseId": self.nurse_id,
+            "scheduleDate": self.schedule_date_obj.isoformat(),
+            "optimizedSchedule": optimized_schedule_items,
+            "unachievableItems": unachievable_items_list,
+            "optimizationScore": solver.ObjectiveValue() if (status == cp_model.OPTIMAL or status == cp_model.FEASIBLE) else 0,
+            "warnings": ["Lunch break may not be at preferred time."] if (status == cp_model.OPTIMAL or status == cp_model.FEASIBLE) and abs(solver.Value(lunch_start_var) - lunch_pref_start_min) > 15 else [] # Example warning
+        }
+
+# Example Usage (for testing locally)
+if __name__ == "__main__":
+    mock_kbs = MockKBS()
+    optimizer = IntelligentDailyScheduleOptimizer(nurse_id="NBetty01", schedule_date="2023-10-01", knowledge_base_accessor=mock_kbs)
+
+    sample_work_items = {
+        "appointments": [
+            {"itemId": "V701", "itemType": "Appointment", "patientId": "102", "title": "Jane Smith - Diabetes FU", "startTime": "09:00:00", "estimatedDuration": 45, "location": "Clinic A", "isFixedTime": True, "initialPriorityScore": 7},
+            {"itemId": "V702", "itemType": "Appointment", "patientId": "P002", "title": "Robert Blue - Checkup", "startTime": "14:00:00", "estimatedDuration": 30, "location": "Clinic B", "isFixedTime": True, "initialPriorityScore": 5},
+        ],
+        "calendar_events": [
+            {"itemId": "EVT001", "itemType": "Meeting", "title": "Team Huddle", "startTime": "10:00:00", "estimatedDuration": 60, "location": "Conf Room B", "isFixedTime": True, "initialPriorityScore": 4},
+        ],
+        "tasks": [
+            {"taskId": "T501", "patientId": "102", "description": "Call Jane Smith re: BG", "estimatedDuration": 25, "initialPriorityScore_text": "High", "dueDate": "2023-10-01", "deadline": "17:00:00", "locationDependency": "Desk"},
+            {"taskId": "T502", "patientId": "P003", "description": "Prep P003 chart", "estimatedDuration": 15, "initialPriorityScore_text": "Medium", "dueDate": "2023-10-01", "deadline": "12:00:00", "locationDependency": "Desk"},
+        ],
+        "critical_alerts_to_address": [
+            {"alertId": "ALERT790", "patientId": "102", "alertType": "Critical Lab", "summary": "K+ 2.8", "estimatedTimeToAddress": 20, "urgencyScore": 10},
+        ],
+        "follow_ups": []
+    }
+    sample_nurse_constraints = {
+        "shiftStartTime": "08:00:00",
+        "shiftEndTime": "17:00:00",
+        "lunchBreakPreferredStartTime": "12:30:00",
+        "lunchBreakDuration": 30,
+        "blockedOutTimes": [{"start": "13:00:00", "end": "13:30:00", "reason": "Mandatory Training"}],
+        # "travelMatrix": {("Clinic A", "Clinic B"): 15, ("Clinic B", "Clinic A"): 15} # Add if testing travel
+    }
+
+    # Helper to add 'priority' to tasks based on text for the example
+    for task_item in sample_work_items["tasks"]:
+        task_item["priority"] = mock_kbs.get_rule("priority_weights").get(task_item["initialPriorityScore_text"], 1)
+    
+    # Helper to add type to prepared activities in optimizer
+    def temp_prepare_activities(self, work_items: Dict, nurse_constraints: Dict) -> List[Dict]:
+        prepared = []
+        for cat, items_list in work_items.items():
+            for item_data in items_list:
+                base_item = {"id": item_data.get("itemId") or item_data.get("taskId") or item_data.get("alertId") or item_data.get("followUpId"),
+                             "type": item_data.get("itemType") or cat[:-1] if cat.endswith('s') else cat, # e.g. tasks -> task
+                             "duration": item_data.get("estimatedDuration") or item_data.get("estimatedTimeToAddress") or item_data.get("estimatedDurationForFollowUpAction") or 30, # default
+                             "priority": item_data.get("initialPriorityScore") or item_data.get("urgencyScore") or item_data.get("priority") or 5, # default
+                             "title": item_data.get("title") or item_data.get("description") or item_data.get("summary") or "Activity",
+                             "is_fixed": item_data.get("isFixedTime", False),
+                             "fixed_start_time_str": item_data.get("startTime") if item_data.get("isFixedTime") else None,
+                             "deadline": item_data.get("deadline") # May need date part too
+                            }
+                if base_item["id"] is None: # Skip if no ID
+                    print(f"Skipping item due to missing ID: {item_data}")
+                    continue
+                prepared.append(base_item)
+        return prepared
+    
+    IntelligentDailyScheduleOptimizer._prepare_activities = temp_prepare_activities # Monkey patch for example run
+
+    optimized_schedule = optimizer.optimize_schedule(sample_work_items, sample_nurse_constraints)
+
+    import json
+    print("\n--- Optimized Schedule JSON Output ---")
+    print(json.dumps(optimized_schedule, indent=2))
