@@ -59,12 +59,84 @@ class BlockedTime(BaseModel):
     end: str
     reason: str = ""
 
+# Additional constraint models for comprehensive patient care
+class BreakTime(BaseModel):
+    breakId: Optional[str] = None
+    startTime: Optional[str] = None
+    duration: int
+    reason: str = ""
+    isFixed: bool = False
+
+class CarePlan(BaseModel):
+    carePlanId: Optional[str] = None
+    patientId: str
+    description: str
+    estimatedDuration: int = 30
+    priority: int = 8
+    deadline: Optional[str] = None
+
+class PatientAdmissionAlert(BaseModel):
+    alertId: Optional[str] = None
+    patientId: str
+    summary: str
+    estimatedTimeToAddress: int = 15
+    urgencyScore: int = 9
+
+class PatientEDVisit(BaseModel):
+    visitId: Optional[str] = None
+    patientId: str
+    reason: str
+    estimatedFollowUpDuration: int = 20
+    priority: int = 8
+    deadline: Optional[str] = None
+
+class PredefinedAppointment(BaseModel):
+    appointmentId: Optional[str] = None
+    patientId: Optional[str] = ""
+    title: str
+    startTime: Optional[str] = None
+    duration: int
+    priority: int = 6
+    location: Optional[str] = ""
+    isFixed: bool = True
+
+class Intervention(BaseModel):
+    interventionId: Optional[str] = None
+    patientId: str
+    description: str
+    estimatedDuration: int = 25
+    priority: int = 7
+    deadline: Optional[str] = None
+
+class PatientCommunication(BaseModel):
+    communicationId: Optional[str] = None
+    patientId: str
+    subject: str
+    estimatedDuration: int = 15
+    priority: int = 6
+    deadline: Optional[str] = None
+
+class PatientVitalAlert(BaseModel):
+    alertId: Optional[str] = None
+    patientId: str
+    summary: str
+    estimatedTimeToAddress: int = 20
+    urgencyScore: int = 9
+
 class WorkItems(BaseModel):
     appointments: List[Appointment] = []
     calendar_events: List[CalendarEvent] = []
     tasks: List[Task] = []
     critical_alerts_to_address: List[CriticalAlert] = []
     follow_ups: List[FollowUp] = []
+    break_times: List[BreakTime] = []
+    care_plans: List[CarePlan] = []
+    patient_admission_alerts: List[PatientAdmissionAlert] = []
+    patient_ed_visits: List[PatientEDVisit] = []
+    predefined_appointments: List[PredefinedAppointment] = []
+    interventions: List[Intervention] = []
+    patient_communications: List[PatientCommunication] = []
+    patient_vital_alerts: List[PatientVitalAlert] = []
 
 class NurseConstraints(BaseModel):
     shiftStartTime: str
@@ -72,6 +144,7 @@ class NurseConstraints(BaseModel):
     lunchBreakPreferredStartTime: str
     lunchBreakDuration: int
     blockedOutTimes: List[BlockedTime] = []
+    patientPreference: str = "BALANCED"  # CRITICAL_PATIENT_FOCUSED, BALANCED, HIGH_PRIORITY_FIRST, SIMILAR_TASK_FIRST, PATIENT_CONTEXT_FOCUSED
 
 class ScheduleOptimizationRequest(BaseModel):
     nurseId: str

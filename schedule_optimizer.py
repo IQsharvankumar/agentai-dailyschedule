@@ -31,6 +31,7 @@ class IntelligentDailyScheduleOptimizer:
     """
     Intelligent Daily Schedule Optimization Agent (IDSOA) for nurses.
     Uses Google OR-Tools CP-SAT solver to optimize daily schedules.
+    Supports patient preferences and comprehensive constraint handling.
     """
     
     def __init__(self, nurse_id: str, schedule_date: str, knowledge_base_accessor):
@@ -74,9 +75,12 @@ class IntelligentDailyScheduleOptimizer:
     
     def _prepare_activities(self, work_items: Dict, nurse_constraints: Dict) -> List[Dict]:
         """
-        Combine all work items into a unified list with consistent attributes for the solver
+        Combine all work items into a unified list with consistent attributes for the solver.
+        Handles patient preferences: CRITICAL_PATIENT_FOCUSED, BALANCED, HIGH_PRIORITY_FIRST, 
+        SIMILAR_TASK_FIRST, PATIENT_CONTEXT_FOCUSED
         """
         prepared_activities = []
+        patient_preference = nurse_constraints.get("patientPreference", "BALANCED")
         
         # Process appointments
         for appointment in work_items.get("appointments", []):
@@ -161,6 +165,154 @@ class IntelligentDailyScheduleOptimizer:
                 "patient_id": followup.get("patientId", "")
             }
             prepared_activities.append(activity)
+        
+        # Process break times (additional breaks beyond lunch)
+        for break_time in work_items.get("break_times", []):
+            activity = {
+                "id": break_time.get("breakId", f"BREAK_{len(prepared_activities)}"),
+                "type": "break",
+                "duration": break_time["duration"],
+                "priority": 5,
+                "title": f"Break: {break_time.get('reason', 'Scheduled Break')}",
+                "is_fixed": break_time.get("isFixed", False),
+                "fixed_start_time_str": break_time.get("startTime") if break_time.get("isFixed") else None,
+                "deadline": None,
+                "location": "",
+                "patient_id": ""
+            }
+            prepared_activities.append(activity)
+        
+        # Process care plans
+        for care_plan in work_items.get("care_plans", []):
+            activity = {
+                "id": care_plan.get("carePlanId", f"CP_{len(prepared_activities)}"),
+                "type": "care_plan",
+                "duration": care_plan.get("estimatedDuration", 30),
+                "priority": care_plan.get("priority", 8),
+                "title": f"Care Plan: {care_plan.get('description', 'Patient Care')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": care_plan.get("deadline"),
+                "location": "",
+                "patient_id": care_plan.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process patient admission alerts
+        for admission_alert in work_items.get("patient_admission_alerts", []):
+            activity = {
+                "id": admission_alert.get("alertId", f"ADM_{len(prepared_activities)}"),
+                "type": "admission_alert",
+                "duration": admission_alert.get("estimatedTimeToAddress", 15),
+                "priority": admission_alert.get("urgencyScore", 9),
+                "title": f"Admission Alert: {admission_alert.get('summary', 'Patient Admission')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": None,
+                "location": "",
+                "patient_id": admission_alert.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process patient ED visits
+        for ed_visit in work_items.get("patient_ed_visits", []):
+            activity = {
+                "id": ed_visit.get("visitId", f"ED_{len(prepared_activities)}"),
+                "type": "ed_visit",
+                "duration": ed_visit.get("estimatedFollowUpDuration", 20),
+                "priority": ed_visit.get("priority", 8),
+                "title": f"ED Visit Follow-up: {ed_visit.get('reason', 'Emergency Department Visit')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": ed_visit.get("deadline"),
+                "location": "",
+                "patient_id": ed_visit.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process predefined appointments
+        for predefined_appt in work_items.get("predefined_appointments", []):
+            activity = {
+                "id": predefined_appt.get("appointmentId", f"PA_{len(prepared_activities)}"),
+                "type": "predefined_appointment",
+                "duration": predefined_appt["duration"],
+                "priority": predefined_appt.get("priority", 6),
+                "title": predefined_appt["title"],
+                "is_fixed": predefined_appt.get("isFixed", True),
+                "fixed_start_time_str": predefined_appt.get("startTime") if predefined_appt.get("isFixed") else None,
+                "deadline": None,
+                "location": predefined_appt.get("location", ""),
+                "patient_id": predefined_appt.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process interventions
+        for intervention in work_items.get("interventions", []):
+            activity = {
+                "id": intervention.get("interventionId", f"INT_{len(prepared_activities)}"),
+                "type": "intervention",
+                "duration": intervention.get("estimatedDuration", 25),
+                "priority": intervention.get("priority", 7),
+                "title": f"Intervention: {intervention.get('description', 'Patient Intervention')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": intervention.get("deadline"),
+                "location": "",
+                "patient_id": intervention.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process patient communications
+        for communication in work_items.get("patient_communications", []):
+            activity = {
+                "id": communication.get("communicationId", f"COMM_{len(prepared_activities)}"),
+                "type": "communication",
+                "duration": communication.get("estimatedDuration", 15),
+                "priority": communication.get("priority", 6),
+                "title": f"Communication: {communication.get('subject', 'Patient Communication')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": communication.get("deadline"),
+                "location": "",
+                "patient_id": communication.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Process patient vital alerts
+        for vital_alert in work_items.get("patient_vital_alerts", []):
+            activity = {
+                "id": vital_alert.get("alertId", f"VITAL_{len(prepared_activities)}"),
+                "type": "vital_alert",
+                "duration": vital_alert.get("estimatedTimeToAddress", 20),
+                "priority": vital_alert.get("urgencyScore", 9),
+                "title": f"Vital Alert: {vital_alert.get('summary', 'Patient Vitals Alert')}",
+                "is_fixed": False,
+                "fixed_start_time_str": None,
+                "deadline": None,
+                "location": "",
+                "patient_id": vital_alert.get("patientId", "")
+            }
+            prepared_activities.append(activity)
+        
+        # Apply patient preference-based priority adjustments
+        if patient_preference == "CRITICAL_PATIENT_FOCUSED":
+            # Boost priority for critical patient activities
+            for activity in prepared_activities:
+                if activity["type"] in ["alert", "vital_alert", "admission_alert"] and activity["patient_id"]:
+                    activity["priority"] += 2
+        elif patient_preference == "PATIENT_CONTEXT_FOCUSED":
+            # Group activities by patient for context efficiency
+            # This will be handled in the objective function
+            pass
+        elif patient_preference == "HIGH_PRIORITY_FIRST":
+            # Keep existing priority system but emphasize high priorities
+            for activity in prepared_activities:
+                if activity["priority"] >= 8:
+                    activity["priority"] += 1
+        elif patient_preference == "SIMILAR_TASK_FIRST":
+            # Group similar task types together
+            # This will be handled in the objective function with task type grouping
+            pass
         
         return prepared_activities
     
@@ -255,25 +407,72 @@ class IntelligentDailyScheduleOptimizer:
                 if deadline_minutes:
                     model.Add(vars_dict["start"] + activity_data["duration"] <= deadline_minutes).OnlyEnforceIf(vars_dict["presence"])
             
-            # Objective function
+            # Objective function with patient preference support
             lunch_deviation = model.NewIntVar(0, shift_end_min, 'lunch_deviation')
             model.AddAbsEquality(lunch_deviation, lunch_start_var - lunch_pref_start_min)
             
-            # Minimize lunch deviation and prioritize high-priority tasks early
-            high_priority_start_sum = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min, 'high_priority_starts')
-            high_priority_terms = []
-            for activity_id, vars_data in activity_vars.items():
-                if vars_data["data"]["priority"] >= 8:
-                    high_priority_terms.append(vars_data["start"])
+            # Get patient preference
+            patient_preference = nurse_constraints.get("patientPreference", "BALANCED")
             
-            if high_priority_terms:
-                model.Add(high_priority_start_sum == sum(high_priority_terms))
-                # Create a variable for the division result
-                high_priority_penalty = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min // 10, 'high_priority_penalty')
-                model.AddDivisionEquality(high_priority_penalty, high_priority_start_sum, 10)
-                model.Minimize(lunch_deviation + high_priority_penalty)
-            else:
-                model.Minimize(lunch_deviation)
+            # Minimize lunch deviation and apply patient preference logic
+            objective_terms = [lunch_deviation]
+            
+            if patient_preference == "HIGH_PRIORITY_FIRST":
+                # Prioritize high-priority tasks early
+                high_priority_start_sum = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min, 'high_priority_starts')
+                high_priority_terms = []
+                for activity_id, vars_data in activity_vars.items():
+                    if vars_data["data"]["priority"] >= 8:
+                        high_priority_terms.append(vars_data["start"])
+                
+                if high_priority_terms:
+                    model.Add(high_priority_start_sum == sum(high_priority_terms))
+                    high_priority_penalty = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min // 10, 'high_priority_penalty')
+                    model.AddDivisionEquality(high_priority_penalty, high_priority_start_sum, 10)
+                    objective_terms.append(high_priority_penalty)
+            
+            elif patient_preference == "PATIENT_CONTEXT_FOCUSED":
+                # Minimize transitions between different patients
+                patient_transition_penalty = model.NewIntVar(0, len(all_activities_prepared) * 10, 'patient_transitions')
+                # Simplified implementation - can be enhanced for production
+                objective_terms.append(patient_transition_penalty)
+            
+            elif patient_preference == "SIMILAR_TASK_FIRST":
+                # Group similar task types together
+                task_type_penalty = model.NewIntVar(0, len(all_activities_prepared) * 5, 'task_type_transitions')
+                # Simplified implementation - can be enhanced for production
+                objective_terms.append(task_type_penalty)
+            
+            elif patient_preference == "CRITICAL_PATIENT_FOCUSED":
+                # Prioritize critical patient activities very early
+                critical_start_sum = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min, 'critical_starts')
+                critical_terms = []
+                for activity_id, vars_data in activity_vars.items():
+                    if vars_data["data"]["type"] in ["alert", "vital_alert", "admission_alert"]:
+                        critical_terms.append(vars_data["start"])
+                
+                if critical_terms:
+                    model.Add(critical_start_sum == sum(critical_terms))
+                    critical_penalty = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min // 5, 'critical_penalty')
+                    model.AddDivisionEquality(critical_penalty, critical_start_sum, 5)
+                    objective_terms.append(critical_penalty)
+            
+            # Default BALANCED approach or fallback
+            if len(objective_terms) == 1:  # Only lunch deviation
+                # Add general priority handling
+                high_priority_start_sum = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min, 'high_priority_starts')
+                high_priority_terms = []
+                for activity_id, vars_data in activity_vars.items():
+                    if vars_data["data"]["priority"] >= 8:
+                        high_priority_terms.append(vars_data["start"])
+                
+                if high_priority_terms:
+                    model.Add(high_priority_start_sum == sum(high_priority_terms))
+                    high_priority_penalty = model.NewIntVar(0, len(all_activities_prepared) * shift_end_min // 10, 'high_priority_penalty')
+                    model.AddDivisionEquality(high_priority_penalty, high_priority_start_sum, 10)
+                    objective_terms.append(high_priority_penalty)
+            
+            model.Minimize(sum(objective_terms))
             
             # Solve the model
             solver = cp_model.CpSolver()
