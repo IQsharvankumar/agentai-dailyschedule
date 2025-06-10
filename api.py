@@ -214,7 +214,7 @@ async def get_sample_request():
     """
     sample_request = {
         "nurseId": "NBetty01",
-        "scheduleDate": "2023-10-01",
+        "scheduleDate": "2025-10-01",
         "workItems": {
             "appointments": [
                 {
